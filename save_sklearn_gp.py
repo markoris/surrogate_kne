@@ -19,7 +19,8 @@ def gp2json(gp):
     Converts gp object to (a) json object and (b) data for X_train_ and y_train
     """
     out_dict = {}
-    out_dict['kernel'] = str(gp.GP.gpr.kernel_)
+#    out_dict['kernel'] = str(gp.GP.gpr.kernel_)
+    out_dict['kernel'] = [str(param) for param in gp.GP.gpr.kernel_.theta]
     out_dict['kernel_params'] = {}
     dict_params = gp.GP.gpr.kernel_.get_params()
     for name in dict_params:
@@ -51,7 +52,10 @@ def load_gp(fname_base):
     my_alpha = np.loadtxt(fname_base+"_alpha.dat")
     dict_params = my_json['kernel_params']
 #    eval("kernel = "+my_json['kernel'])
-    kernel = eval(my_json['kernel'])
+#    kernel = eval(my_json['kernel'])
+    theta = np.array(my_json['kernel']).astype('float')
+    theta = np.power(np.e, theta)
+    kernel = WhiteKernel(theta[0]) + theta[1]*RBF(length_scale=theta[2:])
     gp = GaussianProcessRegressor(kernel=kernel,n_restarts_optimizer=0)
     gp.kernel_ = kernel
     dict_params_eval = {}
