@@ -2,6 +2,9 @@ import numpy as np
 from scipy.interpolate import interp1d
 from joblib import load
 import os
+import sys
+sys.path.append('../')
+import save_sklearn_gp as ssg
 
 from model import model_base
 
@@ -28,7 +31,8 @@ class kn_interp_angle(model_base):
         #ind_use[-1] = True
 
         #self.t_interp = full_times[ind_use]
-        self.t_interp_full = np.loadtxt(interp_loc + "times.dat")
+        #self.t_interp_full = np.loadtxt(interp_loc + "times.dat")
+        self.t_interp_full = np.logspace(np.log10(0.125), np.log10(7.6608262), 191)
 
         self.interpolators = {angle:[] for angle in self.angles}
 
@@ -44,8 +48,9 @@ class kn_interp_angle(model_base):
             #if not ind_use[i]:
             #    continue
             for angle in self.angles:
-                self.interpolators[angle].append(interp_loc + "saved_models_angle/ang" + str(angle) + "_time_" + suffix + ".joblib")
-        
+                if angle == 0: angle = '00'
+#                self.interpolators[angle].append(interp_loc + "saved_models_angle/ang" + str(angle) + "_time_" + suffix + ".joblib")
+                self.interpolators[int(angle)].append(interp_loc + "theta" + str(angle) + "deg/t_" + "{:1.3f}".format(self.t_interp_full[int(suffix)]) + "_days/model")
         self.lmbda_dict = { # dictionary of wavelengths corresponding to bands
                 "u":354.3,
                 "g":477.56,
@@ -64,6 +69,23 @@ class kn_interp_angle(model_base):
         self.ind_60_75 = None
         self.ind_75_90 = None
         self.theta = None
+
+    def model_predict(self, model, inputs):
+
+        from scipy.linalg import cholesky, cho_solve
+
+        K = model.kernel_(model.X_train_)
+        K[np.diag_indices_from(K)] += model.alpha
+        model.L_ = cholesky(K, lower=True) # recalculating L matrix since this is what makes the pickled models bulky
+        model._K_inv = None # has to be set to None so the GP knows to re-calculate matrices used for uncertainty
+        K_trans = model.kernel_(inputs, model.X_train_)
+        pred = K_trans.dot(model.alpha_)
+        pred = model._y_train_std * pred + model._y_train_mean
+        v = cho_solve((model.L_, True), K_trans.T)
+        y_cov = model.kernel_(inputs) - K_trans.dot(v)
+        err = np.sqrt(np.diag(y_cov))
+	
+        return pred, err
 
     def set_params(self, params, t_bounds):
         if isinstance(params["mej_dyn"], float):
@@ -110,65 +132,66 @@ class kn_interp_angle(model_base):
         t_interp = np.array(t_interp)
         mags_interp = np.empty((self.params_array.shape[0], t_interp.size))
         mags_err_interp = np.empty((self.params_array.shape[0], t_interp.size))
-        
         for i in range(t_interp.size):
             if i == 0 or (i + 1) % 5 == 0:
                 print("  evaluating time step {} of {}".format(i + 1, t_interp.size))
             j = ind_list[i]
             ### 0-30 angular bin
-            interpolator_0 = load(self.interpolators[0][j])
-            interpolator_30 = load(self.interpolators[30][j])
+            interpolator_0 = ssg.load_gp(self.interpolators[0][j])
+            interpolator_30 = ssg.load_gp(self.interpolators[30][j])
             if self.ind_0_30.size > 0:
-                mags_0, mags_err_0 = interpolator_0.GP.evaluate(self.params_array[self.ind_0_30])
-                mags_30, mags_err_30 = interpolator_30.GP.evaluate(self.params_array[self.ind_0_30])
-                mags_0 *= interpolator_0.std
-                mags_0 += interpolator_0.mean
-                mags_err_0 *= interpolator_0.std
-                mags_30 *= interpolator_30.std
-                mags_30 += interpolator_30.mean
-                mags_err_30 *= interpolator_30.std
+#                mags_0, mags_err_0 = interpolator_0.predict(self.params_array[self.ind_0_30], return_std=True)
+#                mags_30, mags_err_30 = interpolator_30.predict(self.params_array[self.ind_0_30], return_std=True)
+                mags_0, mags_err_0 = self.model_predict(interpolator_0, self.params_array[self.ind_0_30])
+                mags_30, mags_err_30 = self.model_predict(interpolator_30, self.params_array[self.ind_0_30])
+                mags_0 *= interpolator_0._y_train_std
+                mags_0 += interpolator_0._y_train_mean
+                mags_err_0 *= interpolator_0._y_train_std
+                mags_30 *= interpolator_30._y_train_std
+                mags_30 += interpolator_30._y_train_mean
+                mags_err_30 *= interpolator_30._y_train_std
                 mags_interp[:,i][self.ind_0_30] = ((30.0 - self.theta[self.ind_0_30]) * mags_0 + (self.theta[self.ind_0_30] - 0.0) * mags_30) / (30.0)
                 mags_err_interp[:,i][self.ind_0_30] = ((30.0 - self.theta[self.ind_0_30]) * mags_err_0 + (self.theta[self.ind_0_30] - 0.0) * mags_err_30) / (30.0)
             
             ### 30-60 angular bin
-            interpolator_60 = load(self.interpolators[60][j])
+            interpolator_60 = ssg.load_gp(self.interpolators[60][j])
             if self.ind_30_60.size > 0:
-                mags_30, mags_err_30 = interpolator_30.GP.evaluate(self.params_array[self.ind_30_60])
-                mags_60, mags_err_60 = interpolator_60.GP.evaluate(self.params_array[self.ind_30_60])
-                mags_30 *= interpolator_30.std
-                mags_30 += interpolator_30.mean
-                mags_err_30 *= interpolator_30.std
-                mags_60 *= interpolator_60.std
-                mags_60 += interpolator_60.mean
-                mags_err_60 *= interpolator_60.std
+                mags_30, mags_err_30 = self.model_predict(interpolator_30, self.params_array[self.ind_30_60])
+                mags_60, mags_err_60 = self.model_predict(interpolator_60, self.params_array[self.ind_30_60])
+                mags_30 *= interpolator_30._y_train_std
+                mags_30 += interpolator_30._y_train_mean
+                mags_err_30 *= interpolator_30._y_train_std
+                mags_60 *= interpolator_60._y_train_std
+                mags_60 += interpolator_60._y_train_mean
+                mags_err_60 *= interpolator_60._y_train_std
                 mags_interp[:,i][self.ind_30_60] = ((60.0 - self.theta[self.ind_30_60]) * mags_30 + (self.theta[self.ind_30_60] - 30.0) * mags_60) / (30.0)
                 mags_err_interp[:,i][self.ind_30_60] = ((60.0 - self.theta[self.ind_30_60]) * mags_err_30 + (self.theta[self.ind_30_60] - 30.0) * mags_err_60) / (30.0)
 
             ### 60-75 angular bin
-            interpolator_75 = load(self.interpolators[75][j])
+            interpolator_75 = ssg.load_gp(self.interpolators[75][j])
             if self.ind_60_75.size > 0:
-                mags_60, mags_err_60 = interpolator_60.GP.evaluate(self.params_array[self.ind_60_75])
-                mags_75, mags_err_75 = interpolator_75.GP.evaluate(self.params_array[self.ind_60_75])
-                mags_60 *= interpolator_60.std
-                mags_60 += interpolator_60.mean
-                mags_err_60 *= interpolator_60.std
-                mags_75 *= interpolator_75.std
-                mags_75 += interpolator_75.mean
-                mags_err_75 *= interpolator_75.std
+                mags_60, mags_err_60 = self.model_predict(interpolator_60, self.params_array[self.ind_60_75])
+                mags_75, mags_err_75 = self.model_predict(interpolator_75, self.params_array[self.ind_60_75])
+                mags_60 *= interpolator_60._y_train_std
+                mags_60 += interpolator_60._y_train_mean
+                mags_err_60 *= interpolator_60._y_train_std
+                mags_75 *= interpolator_75._y_train_std
+                mags_75 += interpolator_75._y_train_mean
+                mags_err_75 *= interpolator_75._y_train_std
                 mags_interp[:,i][self.ind_60_75] = ((75.0 - self.theta[self.ind_60_75]) * mags_60 + (self.theta[self.ind_60_75] - 60.0) * mags_75) / (15.0)
                 mags_err_interp[:,i][self.ind_60_75] = ((75.0 - self.theta[self.ind_60_75]) * mags_err_60 + (self.theta[self.ind_60_75] - 60.0) * mags_err_75) / (15.0)
 
             ### 75-90 angular bin
-            interpolator_90 = load(self.interpolators[90][j])
+            interpolator_90 = ssg.load_gp(self.interpolators[90][j])
             if self.ind_75_90.size > 0:
-                mags_75, mags_err_75 = interpolator_75.GP.evaluate(self.params_array[self.ind_75_90])
-                mags_90, mags_err_90 = interpolator_90.GP.evaluate(self.params_array[self.ind_75_90])
-                mags_75 *= interpolator_75.std
-                mags_75 += interpolator_75.mean
-                mags_err_75 *= interpolator_75.std
-                mags_90 *= interpolator_90.std
-                mags_90 += interpolator_90.mean
-                mags_err_90 *= interpolator_90.std
+                mags_75, mags_err_75 = self.model_predict(interpolator_75, self.params_array[self.ind_75_90])
+                mags_90, mags_err_90 = self.model_predict(interpolator_90, self.params_array[self.ind_75_90])
+                mags_75 *= interpolator_75._y_train_std
+                mags_75 += interpolator_75._y_train_mean
+                mags_err_75 *= interpolator_75._y_train_std
+                mags_90 *= interpolator_90._y_train_std
+                mags_90 += interpolator_90._y_train_mean
+                mags_err_90 *= interpolator_90._y_train_std
                 mags_interp[:,i][self.ind_75_90] = ((90.0 - self.theta[self.ind_75_90]) * mags_75 + (self.theta[self.ind_75_90] - 75.0) * mags_90) / (15.0)
                 mags_err_interp[:,i][self.ind_75_90] = ((90.0 - self.theta[self.ind_75_90]) * mags_err_75 + (self.theta[self.ind_75_90] - 75.0) * mags_err_90) / (15.0)
         

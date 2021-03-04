@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from kn_interp_angle import kn_interp_angle
@@ -17,4 +19,4 @@ plt.plot(t, mag)
 plt.xscale("log")
 plt.gca().invert_yaxis()
 
-plt.savefig("/home/elizabeth.champion/public_html/random/kn_interp_test.png")
+plt.savefig("kn_interp_test.png")
