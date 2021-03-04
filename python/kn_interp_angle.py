@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.interpolate import interp1d
-from joblib import load
 import os
 import sys
 sys.path.append('../')
@@ -19,38 +18,21 @@ class kn_interp_angle(model_base):
         interp_loc = os.environ["INTERP_LOC"]
         if interp_loc[-1] != "/":
             interp_loc += "/"
-        #full_times = np.loadtxt(interp_loc + "times.dat")
+        
         self.angles = [0, 30, 60, 75, 90]
 
-        #ind_use = np.arange(191) % 1 == 0 # use every interpolator
-    
         interpolator_suffixes = ["%03d" % i for i in range(191)]
 
-        # force it to always use first and last interpolators
-        #ind_use[0] = True
-        #ind_use[-1] = True
-
-        #self.t_interp = full_times[ind_use]
-        #self.t_interp_full = np.loadtxt(interp_loc + "times.dat")
         self.t_interp_full = np.logspace(np.log10(0.125), np.log10(7.6608262), 191)
 
         self.interpolators = {angle:[] for angle in self.angles}
 
-        #for i, suffix in enumerate(interpolator_suffixes):
-        #    if not ind_use[i]:
-        #        continue
-        #    for angle in self.angles:
-        #        print("loading interpolator", suffix, "angle", angle)
-        #        self.interpolators[angle].append(load(interp_loc + "saved_models_angle/ang" + str(angle) + "_time_" + suffix + ".joblib"))
-        
         ### rather than preload all the interpolators, just store their string names and load them on the fly
         for i, suffix in enumerate(interpolator_suffixes):
-            #if not ind_use[i]:
-            #    continue
             for angle in self.angles:
                 if angle == 0: angle = '00'
-#                self.interpolators[angle].append(interp_loc + "saved_models_angle/ang" + str(angle) + "_time_" + suffix + ".joblib")
                 self.interpolators[int(angle)].append(interp_loc + "theta" + str(angle) + "deg/t_" + "{:1.3f}".format(self.t_interp_full[int(suffix)]) + "_days/model")
+        
         self.lmbda_dict = { # dictionary of wavelengths corresponding to bands
                 "u":354.3,
                 "g":477.56,
@@ -63,12 +45,8 @@ class kn_interp_angle(model_base):
                 "K":2159.0
         }
         
-        self.params_array = None
-        self.ind_0_30 = None
-        self.ind_30_60 = None
-        self.ind_60_75 = None
-        self.ind_75_90 = None
-        self.theta = None
+        self.params_array = None # internal storage of parameter array
+        self.theta = None # internal storage of theta specifically (for convenience)
 
     def model_predict(self, model, inputs):
 
@@ -88,6 +66,8 @@ class kn_interp_angle(model_base):
         return pred, err
 
     def set_params(self, params, t_bounds):
+        ### params should be a dictionary mapping parameter names to either single floats or 1d arrays.
+        ### if it's a float, convert it to an array
         if isinstance(params["mej_dyn"], float):
             self.params_array = np.empty((1, 5))
             self.theta = np.array([params["theta"]])
@@ -95,12 +75,15 @@ class kn_interp_angle(model_base):
             self.params_array = np.empty((params["mej_dyn"].size, 5))
             self.theta = params["theta"]
 
-        ### find indices corresponding to each angular bin
-        self.ind_0_30 = np.where(self.theta < 30)[0]
-        self.ind_30_60 = np.where((30 <= self.theta) & (self.theta < 60))[0]
-        self.ind_60_75 = np.where((60 <= self.theta) & (self.theta < 75))[0]
-        self.ind_75_90 = np.where(75 <= self.theta)[0]
+        ### make a dictionary mapping angular bins - e.g. (0, 30) - to arrays of integers.
+        ### these arrays give the indices of self.params_array with theta values inside that angular bin.
+        self.index_dict = {}
+        for angle_index in range(len(self.angles) - 1):
+            theta_lower = self.angles[angle_index]
+            theta_upper = self.angles[angle_index + 1]
+            self.index_dict[(theta_lower, theta_upper)] = np.where((theta_lower <= self.theta) & (self.theta < theta_upper))[0]
         
+        ### now populate the parameter array
         self.params_array[:,0] = params["mej_dyn"]
         self.params_array[:,1] = params["vej_dyn"]
         self.params_array[:,2] = params["mej_wind"]
@@ -109,99 +92,85 @@ class kn_interp_angle(model_base):
 
     def evaluate(self, tvec_days, band):
         print(band + " band:")
-        mags_out = np.empty((self.params_array.shape[0], tvec_days.size))
-        mags_err_out = np.empty((self.params_array.shape[0], tvec_days.size))
         self.params_array[:,4] = self.lmbda_dict[band]
 
         ### find out which interpolators we actually need to use
-        ind_use = [False] * 191
-        ind_list = []
-        t_interp = []
+        ind_list = [] # list of interpolator indices (i.e. an integer 0, 1, ..., 190) that are used
+        t_interp = [] # list of times corresponding to these interpolators
         for t in tvec_days:
             for i in range(190):
                 if self.t_interp_full[i] <= t < self.t_interp_full[i + 1]:
-                    if not ind_use[i]:
-                        ind_use[i] = True
+                    if i not in ind_list:
                         t_interp.append(self.t_interp_full[i])
                         ind_list.append(i)
-                    if not ind_use[i + 1]:
-                        ind_use[i + 1] = True
+                    if i + 1 not in ind_list:
                         t_interp.append(self.t_interp_full[i + 1])
                         ind_list.append(i + 1)
 
         t_interp = np.array(t_interp)
+
+        ### 2d arrays to hold the interpolator values.
+        ### each row is one light curve corresponding to the parameter values in that row of self.params_array.
+        ### each column is a time value corresponding to t_interp
         mags_interp = np.empty((self.params_array.shape[0], t_interp.size))
         mags_err_interp = np.empty((self.params_array.shape[0], t_interp.size))
-        for i in range(t_interp.size):
-            if i == 0 or (i + 1) % 5 == 0:
-                print("  evaluating time step {} of {}".format(i + 1, t_interp.size))
-            j = ind_list[i]
-            ### 0-30 angular bin
-            interpolator_0 = ssg.load_gp(self.interpolators[0][j])
-            interpolator_30 = ssg.load_gp(self.interpolators[30][j])
-            if self.ind_0_30.size > 0:
-#                mags_0, mags_err_0 = interpolator_0.predict(self.params_array[self.ind_0_30], return_std=True)
-#                mags_30, mags_err_30 = interpolator_30.predict(self.params_array[self.ind_0_30], return_std=True)
-                mags_0, mags_err_0 = self.model_predict(interpolator_0, self.params_array[self.ind_0_30])
-                mags_30, mags_err_30 = self.model_predict(interpolator_30, self.params_array[self.ind_0_30])
-                mags_0 *= interpolator_0._y_train_std
-                mags_0 += interpolator_0._y_train_mean
-                mags_err_0 *= interpolator_0._y_train_std
-                mags_30 *= interpolator_30._y_train_std
-                mags_30 += interpolator_30._y_train_mean
-                mags_err_30 *= interpolator_30._y_train_std
-                mags_interp[:,i][self.ind_0_30] = ((30.0 - self.theta[self.ind_0_30]) * mags_0 + (self.theta[self.ind_0_30] - 0.0) * mags_30) / (30.0)
-                mags_err_interp[:,i][self.ind_0_30] = ((30.0 - self.theta[self.ind_0_30]) * mags_err_0 + (self.theta[self.ind_0_30] - 0.0) * mags_err_30) / (30.0)
+
+        for lc_index in range(t_interp.size):
+            if lc_index == 0 or (lc_index + 1) % 5 == 0:
+                print("  evaluating time step {} of {}".format(lc_index + 1, t_interp.size))
+            interp_index = ind_list[lc_index]
             
-            ### 30-60 angular bin
-            interpolator_60 = ssg.load_gp(self.interpolators[60][j])
-            if self.ind_30_60.size > 0:
-                mags_30, mags_err_30 = self.model_predict(interpolator_30, self.params_array[self.ind_30_60])
-                mags_60, mags_err_60 = self.model_predict(interpolator_60, self.params_array[self.ind_30_60])
-                mags_30 *= interpolator_30._y_train_std
-                mags_30 += interpolator_30._y_train_mean
-                mags_err_30 *= interpolator_30._y_train_std
-                mags_60 *= interpolator_60._y_train_std
-                mags_60 += interpolator_60._y_train_mean
-                mags_err_60 *= interpolator_60._y_train_std
-                mags_interp[:,i][self.ind_30_60] = ((60.0 - self.theta[self.ind_30_60]) * mags_30 + (self.theta[self.ind_30_60] - 30.0) * mags_60) / (30.0)
-                mags_err_interp[:,i][self.ind_30_60] = ((60.0 - self.theta[self.ind_30_60]) * mags_err_30 + (self.theta[self.ind_30_60] - 30.0) * mags_err_60) / (30.0)
+            ### cache the GP objects to avoid reloading one we already have
+            GP_dict = {}
+            
+            ### iterate over angular bins
+            for angle_index in range(len(self.angles) - 1):
+                theta_lower = self.angles[angle_index]
+                theta_upper = self.angles[angle_index + 1]
+                delta_theta = float(theta_upper) - float(theta_lower)
+                param_indices = self.index_dict[(theta_lower, theta_upper)] # indices of self.params_array corresponding to this angular bin
+                if param_indices.size == 0: # skip loading and evaluating the interpolators if we have no points to evaluate
+                    continue
+                if theta_lower in GP_dict.keys(): # check if we've already loaded this interpolator to avoid extra load time
+                    interp_lower = GP_dict[theta_lower]
+                else:
+                    interp_lower = ssg.load_gp(self.interpolators[theta_lower][interp_index])
+                interp_upper = ssg.load_gp(self.interpolators[theta_upper][interp_index]) # this interpolator will never already be loaded so no need to check
+                GP_dict[theta_upper] = interp_upper # cache the upper interpolator (we won't need the lower one again)
+                
+                ### evaluate the interpolator at this time step for the upper and lower angles
+                mags_lower, mags_err_lower = self.model_predict(interp_lower, self.params_array[param_indices])
+                mags_upper, mags_err_upper = self.model_predict(interp_upper, self.params_array[param_indices])
 
-            ### 60-75 angular bin
-            interpolator_75 = ssg.load_gp(self.interpolators[75][j])
-            if self.ind_60_75.size > 0:
-                mags_60, mags_err_60 = self.model_predict(interpolator_60, self.params_array[self.ind_60_75])
-                mags_75, mags_err_75 = self.model_predict(interpolator_75, self.params_array[self.ind_60_75])
-                mags_60 *= interpolator_60._y_train_std
-                mags_60 += interpolator_60._y_train_mean
-                mags_err_60 *= interpolator_60._y_train_std
-                mags_75 *= interpolator_75._y_train_std
-                mags_75 += interpolator_75._y_train_mean
-                mags_err_75 *= interpolator_75._y_train_std
-                mags_interp[:,i][self.ind_60_75] = ((75.0 - self.theta[self.ind_60_75]) * mags_60 + (self.theta[self.ind_60_75] - 60.0) * mags_75) / (15.0)
-                mags_err_interp[:,i][self.ind_60_75] = ((75.0 - self.theta[self.ind_60_75]) * mags_err_60 + (self.theta[self.ind_60_75] - 60.0) * mags_err_75) / (15.0)
+                ### scale and shift everything
+                mags_lower *= interp_lower._y_train_std
+                mags_lower += interp_lower._y_train_mean
+                mags_err_lower *= interp_lower._y_train_std
+                mags_upper *= interp_upper._y_train_std
+                mags_upper += interp_upper._y_train_mean
+                mags_err_upper *= interp_upper._y_train_std
 
-            ### 75-90 angular bin
-            interpolator_90 = ssg.load_gp(self.interpolators[90][j])
-            if self.ind_75_90.size > 0:
-                mags_75, mags_err_75 = self.model_predict(interpolator_75, self.params_array[self.ind_75_90])
-                mags_90, mags_err_90 = self.model_predict(interpolator_90, self.params_array[self.ind_75_90])
-                mags_75 *= interpolator_75._y_train_std
-                mags_75 += interpolator_75._y_train_mean
-                mags_err_75 *= interpolator_75._y_train_std
-                mags_90 *= interpolator_90._y_train_std
-                mags_90 += interpolator_90._y_train_mean
-                mags_err_90 *= interpolator_90._y_train_std
-                mags_interp[:,i][self.ind_75_90] = ((90.0 - self.theta[self.ind_75_90]) * mags_75 + (self.theta[self.ind_75_90] - 75.0) * mags_90) / (15.0)
-                mags_err_interp[:,i][self.ind_75_90] = ((90.0 - self.theta[self.ind_75_90]) * mags_err_75 + (self.theta[self.ind_75_90] - 75.0) * mags_err_90) / (15.0)
+                ### insert these values in the column of mags_interp corresponding to this time step and the row(s) corresponding to this angular bin
+                mags_interp[:,lc_index][param_indices] = ((theta_upper - self.theta[param_indices]) * mags_lower
+                        + (self.theta[param_indices] - theta_lower) * mags_upper) / delta_theta
+                mags_err_interp[:,lc_index][param_indices] = ((theta_upper - self.theta[param_indices]) * mags_err_lower
+                        + (self.theta[param_indices] - theta_lower) * mags_err_upper) / delta_theta
+                
+        ### now we need to construct the light curves at the user-requested times
+        ### start by creating empty arrays with rows corresponding to rows of self.params_array and columns corresponding to the user-requested times
+        mags_out = np.empty((self.params_array.shape[0], tvec_days.size))
+        mags_err_out = np.empty((self.params_array.shape[0], tvec_days.size))
         
+        ### iterate over light curves (or parameter combinations, depending on how you look at it)
         for i in range(self.params_array.shape[0]):
+            ### make a 1d interpolator for magnitudes and another for errors
             mags_interpolator = interp1d(t_interp, mags_interp[i], fill_value="extrapolate")
             mags_err_interpolator = interp1d(t_interp, mags_err_interp[i], fill_value="extrapolate")
+            ### evaluate
             mags_out[i] = mags_interpolator(tvec_days)
             mags_err_out[i] = mags_err_interpolator(tvec_days)
         
         if self.params_array.shape[0] == 1:
-            # if the model is being used in non-vectorized form, return 1d arrays
+            ### if the model is being used in non-vectorized form, return 1d arrays
             return mags_out.flatten(), mags_err_out.flatten()
         return mags_out, mags_err_out
