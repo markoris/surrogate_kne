@@ -19,7 +19,7 @@ class kn_interp_angle(model_base):
         if interp_loc[-1] != "/":
             interp_loc += "/"
         
-        self.angles = [0, 30, 60, 75, 90]
+        self.angles = [0, 30, 45, 60, 75, 90]
 
         interpolator_suffixes = ["%03d" % i for i in range(191)]
 
@@ -62,7 +62,6 @@ class kn_interp_angle(model_base):
         v = cho_solve((model.L_, True), K_trans.T)
         y_cov = model.kernel_(inputs) - K_trans.dot(v)
         err = np.sqrt(np.diag(y_cov))
-	
         return pred, err
 
     def set_params(self, params, t_bounds):
@@ -141,14 +140,6 @@ class kn_interp_angle(model_base):
                 ### evaluate the interpolator at this time step for the upper and lower angles
                 mags_lower, mags_err_lower = self.model_predict(interp_lower, self.params_array[param_indices])
                 mags_upper, mags_err_upper = self.model_predict(interp_upper, self.params_array[param_indices])
-
-                ### scale and shift everything
-                mags_lower *= interp_lower._y_train_std
-                mags_lower += interp_lower._y_train_mean
-                mags_err_lower *= interp_lower._y_train_std
-                mags_upper *= interp_upper._y_train_std
-                mags_upper += interp_upper._y_train_mean
-                mags_err_upper *= interp_upper._y_train_std
 
                 ### insert these values in the column of mags_interp corresponding to this time step and the row(s) corresponding to this angular bin
                 mags_interp[:,lc_index][param_indices] = ((theta_upper - self.theta[param_indices]) * mags_lower
