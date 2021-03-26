@@ -93,10 +93,12 @@ def predict(model, inputs, output=''):
     err = np.sqrt(np.diag(y_cov))
     
     def lums_to_mags(data): # add err argument that handles conversion of errors
-        
+        '''
+        assumes input of log10 luminosity
+        '''
         r = 3.086e18 # parsec to cm
         r *= 10 # 10 pc for absolute magnitude
-        flux = data / (4 * np.pi * r**2)
+        flux = np.power(10, data) / (4 * np.pi * r**2)
         flux[np.where(flux <= 0)] = 1e-50 # eliminate zeroes with really small values
         mags = -48.6 - 2.5 * np.log10(flux)
         return mags
