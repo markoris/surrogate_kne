@@ -92,26 +92,27 @@ def predict(model, inputs, output=''):
     y_cov = model.kernel_(inputs) - K_trans.dot(v)
     err = np.sqrt(np.diag(y_cov))
     
-    def lums_to_mags(data): # add err argument that handles conversion of errors
+    def lums_to_mags(data, err): # add err argument that handles conversion of errors
         '''
         assumes input of log10 luminosity
         '''
         r = 3.086e18 # parsec to cm
         r *= 10 # 10 pc for absolute magnitude
-        flux = np.power(10, data) / (4 * np.pi * r**2)
-        flux[np.where(flux <= 0)] = 1e-50 # eliminate zeroes with really small values
-        mags = -48.6 - 2.5 * np.log10(flux)
-        return mags
+        flux = data - np.log10(4*np.pi*r**2)
+        mags = -48.6 - 2.5*flux
+                
+        return mags, 2.5*err # \sigma_{mags} = |-2.5|*\sigma_{logL}, all other constants assumed without uncertainty
         
     if output == 'mags':
-        return lums_to_mags(pred), lums_to_mags(err) # fix error propagation, currently incorrect
+        return lums_to_mags(pred, err)
     
     if output == 'ABmags':
         wavs = np.array([476., 621., 754., 900., 1020., 1220., 1630., 2190.])
         ab_offsets = np.array([-0.103, 0.146, 0.366, 0.528, 0.634, 0.938, 1.379, 1.900]) # Hewett et al. 2006, MNRAS, 367, 454-468 Table 7
         offset_idx = np.argmin(np.abs([[inputs[i, -1]-wavs[j] for j in range(wavs.shape[0])] for i in range(inputs.shape[0])]), axis=1)
         # determines offset value by finding closest matching filter to user-specified wavelength
-        return lums_to_mags(pred)+ab_offsets[offset_idx], lums_to_mags(err)
+        mags, err = lums_to_mags(pred, err)
+        return mags+ab_offsets[offset_idx], err
     
     return pred, err
 
