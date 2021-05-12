@@ -25,7 +25,7 @@ If you use this work, please cite the companion paper and the hypercube study up
 
 ```
 @ARTICLE{surrogate_kne,
-  author={{Ristic}, M. and {Champion}, E. and {O'Shaughnessy}, R. and {Wollaeger}, R. and {Korobkin}, O. and {Chase, E.A.} and {Fryer}, C.L. and {Hungerford}, A. and {Fontes}, C.},
+  author={{Ristic}, M. and {Champion}, E. and {O'Shaughnessy}, R. and {Wollaeger}, R. and {Korobkin}, O. and {Chase}, E.A. and {Fryer}, C.L. and {Hungerford}, A.L. and {Fontes}, C.J.},
   title ="{Interpolating detailed simulations of kilonovae: adaptive learning and parameter inference applications}"
   year=2021,
   journal = {in prep}
