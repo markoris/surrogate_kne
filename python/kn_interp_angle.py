@@ -21,9 +21,10 @@ class kn_interp_angle(model_base):
         
         self.angles = [0, 30, 45, 60, 75, 90]
 
-        interpolator_suffixes = ["%03d" % i for i in range(191)]
+        interpolator_suffixes = ["%03d" % i for i in range(264)]
 
-        self.t_interp_full = np.logspace(np.log10(0.125), np.log10(7.6608262), 191)
+        #self.t_interp_full = np.logspace(np.log10(0.125), np.log10(7.6608262), 191)
+        self.t_interp_full = np.logspace(np.log10(0.125), np.log10(37.239195485411194), 264)
 
         self.interpolators = {angle:[] for angle in self.angles}
 
