@@ -28,8 +28,8 @@ If you use this work, please cite the companion paper and the hypercube study up
   author={{Ristic}, M. and {Champion}, E. and {O'Shaughnessy}, R. and {Wollaeger}, R. and {Korobkin}, O. and {Chase}, E.A. and {Fryer}, C.L. and {Hungerford}, A.L. and {Fontes}, C.J.},
   title ="{Interpolating detailed simulations of kilonovae: adaptive learning and parameter inference applications}"
   year=2021,
-  journal = {in prep}
-
+  journal = {Submitted},
+   url      = {http://xxx.lanl.gov/abs/arXiv:2105.07013}
 }
 
 @ARTICLE{rw_hypercube,
