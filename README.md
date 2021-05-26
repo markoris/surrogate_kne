@@ -36,7 +36,8 @@ If you use this work, please cite the companion paper and the hypercube study up
   author={{Wollaeger}, R. and {Fryer}, C.L. and Fontes, C.J. and Ristic, M. and Hungerford, A. and Korobkin, O. and {O'Shaughnessy}, R. and {Herring}, A.M.},
   title={A Broad Grid of 2D Kilonova Emission Models},
   year=2021,
-  journal = {Submitted to \apj}
+  journal = {Submitted to \apj},
+  url={https://arxiv.org/abs/2105.11543}
 }
 
 ```
