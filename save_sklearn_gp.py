@@ -102,7 +102,7 @@ def predict(model, inputs, output=''):
 #        # determines offset value by finding closest matching filter to user-specified wavelength
 #        mags, err = lums_to_mags(pred, err)
 #        return mags+ab_offsets[offset_idx], err
-    
+    del K, model.L_, model._K_inv, K_trans, v, y_cov
     return pred, err
 
 def lums_to_mags(data, err): # add err argument that handles conversion of errors
