@@ -111,7 +111,7 @@ def lums_to_mags(data, err): # add err argument that handles conversion of error
     '''
     r = 3.086e18 # parsec to cm
     r *= 10 # 10 pc for absolute magnitude
-    flux = data - np.log10(4*np.pi*r**2)
+    flux = data - np.log10(4*np.pi*r**2) # L = flux*4*pi*r**2 -> flux = L/(4*pi*r**2) -> log10(flux) = log10(L/4*pi*r**2) = log10(L) - log10(4*pi*r**2)
     mags = -48.6 - 2.5*flux
                 
     return mags, 2.5*err # \sigma_{mags} = |-2.5|*\sigma_{logL}, all other constants assumed without uncertainty
