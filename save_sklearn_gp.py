@@ -65,7 +65,7 @@ def load_gp(fname_base):
             continue
         if name =="k2__k2__length_scale":
             one_space = ' '.join(dict_params[name].split())
-            dict_params_eval[name] = eval(one_space.replace(' ',','))
+#            dict_params_eval[name] = eval(one_space.replace(' ',','))
         else:
             dict_params_eval[name] = eval(dict_params[name])
     gp.kernel_.set_params(**dict_params_eval)
