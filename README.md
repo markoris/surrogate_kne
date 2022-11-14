@@ -35,10 +35,11 @@ If you use this work, please cite the companion paper and the hypercube study up
 
 
 ```
-@ARTICLE{more_surrogates,
-  author={{Kedia}, Atul and {Ristic}, Marko and {O'Shaughnessy}, Richard and {Yelikar}, Anjali B. and {Wollaeger}, Ryan T. and {Korobkin}, Oleg and {Chase}, Eve A. and {Fryer}, Christopher L. and {Fontes}, Christopher J.},
-  title ="{Surrogate light curve models for kilonovae with comprehensive wind ejecta outflows and parameter estimation for AT2017gfo}"
-  journal={submitted},
+@ARTICLE{kedia2022surrogate,
+  title={Surrogate light curve models for kilonovae with comprehensive wind ejecta outflows and parameter estimation for AT2017gfo},
+  author={Kedia, Atul and Ristic, Marko and O'Shaughnessy, Richard and Yelikar, Anjali B and Wollaeger, Ryan T and Korobkin, Oleg and Chase, Eve A and Fryer, Christopher L and Fontes, Christopher J},
+  journal={arXiv preprint arXiv:2211.04363},
+  year={2022}
 }
 
 @ARTICLE{surrogate_kne,
